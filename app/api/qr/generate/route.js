@@ -11,7 +11,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "URL zaroori hai" }, { status: 400 });
     }
 
-    // 1. Supabase mein record save karo (Serial number auto-increment hoga 501 se)
+    // 1. Supabase mein record save karo
     const { data, error } = await supabase
       .from("qrcodes")
       .insert([{ target_url: targetUrl }])
@@ -21,9 +21,13 @@ export async function POST(req) {
     if (error) throw error;
     const serialNumber = data.serial_number;
 
-    // 2. Dynamic Redirection Link (QR scan karne par ispar jayega)
-    const baseUrl = process.env.BASE_URL || "http://localhost:3000";
-const redirectUrl = `${baseUrl}/q/${serialNumber}`;
+    // 2. Safe Base URL Handling (Removes trailing slashes to prevent invalid path errors)
+    let rawBaseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, ""); // Trim trailing slashes
+    
+    // Dynamic Redirection Link
+    const redirectUrl = `${cleanBaseUrl}/q/${serialNumber}`;
+
     // 3. 2400 x 2400 High Resolution Canvas Setup
     const width = 2400;
     const height = 2400;
@@ -50,7 +54,7 @@ const redirectUrl = `${baseUrl}/q/${serialNumber}`;
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(centerX, centerY, boxSize, boxSize);
 
-    // Border around white box (Optional clarity ke liye)
+    // Border around white box
     ctx.strokeStyle = "#000000";
     ctx.lineWidth = 4;
     ctx.strokeRect(centerX, centerY, boxSize, boxSize);
