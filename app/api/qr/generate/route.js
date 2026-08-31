@@ -26,7 +26,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "Target URL zaroori hai" }, { status: 400 });
     }
 
-    // Target URL Normalization (Auto-add https:// if protocol missing)
+    // Target URL Normalization (Auto-add https:// if missing)
     let cleanTargetUrl = targetUrl.trim();
     if (!cleanTargetUrl.startsWith("http://") && !cleanTargetUrl.startsWith("https://")) {
       cleanTargetUrl = `https://${cleanTargetUrl}`;
@@ -50,7 +50,7 @@ export async function POST(req) {
     }
     const redirectUrl = `${rawBaseUrl}/q/${serialNumber}`;
 
-    // 3. Generate High-Res 2400x2400 QR
+    // 3. Generate High-Res 2400x2400 QR Code
     const qrPngBuffer = await QRCode.toBuffer(redirectUrl, {
       type: "png",
       width: 2400,
@@ -60,34 +60,47 @@ export async function POST(req) {
 
     const png = PNG.sync.read(qrPngBuffer);
     
-    // 4. White Center Box
-    const boxSize = 220;
-    const startX = Math.floor((2400 - boxSize) / 2);
-    const startY = Math.floor((2400 - boxSize) / 2);
+    // 4. Circular Box Calculation (Center of 2400x2400 Canvas)
+    const centerX = 1200;
+    const centerY = 1200;
+    const radius = 110; // Circular Box Radius
+    const borderWidth = 6; // Thin sharp outer stroke
 
-    for (let y = startY; y < startY + boxSize; y++) {
-      for (let x = startX; x < startX + boxSize; x++) {
-        const idx = (png.width * y + x) << 2;
-        // Border thickness
-        const isBorder = (y < startY + 8 || y > startY + boxSize - 9 || x < startX + 8 || x > startX + boxSize - 9);
-        const color = isBorder ? 0 : 255;
-        
-        png.data[idx] = color;
-        png.data[idx + 1] = color;
-        png.data[idx + 2] = color;
-        png.data[idx + 3] = 255;
+    const minX = centerX - radius - 5;
+    const maxX = centerX + radius + 5;
+    const minY = centerY - radius - 5;
+    const maxY = centerY + radius + 5;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq <= radius * radius) {
+          const idx = (png.width * y + x) << 2;
+          
+          // Outer Border Circle vs Inner White Fill
+          const isBorder = distSq >= (radius - borderWidth) * (radius - borderWidth);
+          const color = isBorder ? 0 : 255;
+
+          png.data[idx] = color;     // R
+          png.data[idx + 1] = color; // G
+          png.data[idx + 2] = color; // B
+          png.data[idx + 3] = 255;   // Alpha
+        }
       }
     }
 
-    // 5. Draw Typed Serial Number in Center Box
+    // 5. Draw Pixel Font Serial Number inside the Circular Badge
     const serialStr = `${serialNumber}`;
-    const pixelScale = 16; // Text size scale
+    const pixelScale = 14; // Scaled to fit perfectly inside circle
     const charWidth = 3 * pixelScale;
     const charSpacing = 2 * pixelScale;
     const totalWidth = (serialStr.length * charWidth) + ((serialStr.length - 1) * charSpacing);
     
-    const textStartX = Math.floor((2400 - totalWidth) / 2);
-    const textStartY = Math.floor((2400 - (5 * pixelScale)) / 2);
+    const textStartX = Math.floor(centerX - (totalWidth / 2));
+    const textStartY = Math.floor(centerY - ((5 * pixelScale) / 2));
 
     for (let i = 0; i < serialStr.length; i++) {
       const char = serialStr[i];
@@ -97,16 +110,15 @@ export async function POST(req) {
       for (let r = 0; r < fontGrid.length; r++) {
         for (let c = 0; c < fontGrid[r].length; c++) {
           if (fontGrid[r][c] === 1) {
-            // Draw pixel block
             for (let py = 0; py < pixelScale; py++) {
               for (let px = 0; px < pixelScale; px++) {
                 const drawX = charXOffset + (c * pixelScale) + px;
                 const drawY = textStartY + (r * pixelScale) + py;
                 const idx = (png.width * drawY + drawX) << 2;
                 
-                png.data[idx] = 0;       // R
-                png.data[idx + 1] = 0;   // G
-                png.data[idx + 2] = 0;   // B
+                png.data[idx] = 0;       // Black R
+                png.data[idx + 1] = 0;   // Black G
+                png.data[idx + 2] = 0;   // Black B
                 png.data[idx + 3] = 255; // Alpha
               }
             }
