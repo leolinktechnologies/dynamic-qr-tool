@@ -22,9 +22,8 @@ export async function POST(req) {
     const serialNumber = data.serial_number;
 
     // 2. Dynamic Redirection Link (QR scan karne par ispar jayega)
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const redirectUrl = `${baseUrl}/q/${serialNumber}`;
-
+    const baseUrl = process.env.BASE_URL || "http://localhost:3000";
+const redirectUrl = `${baseUrl}/q/${serialNumber}`;
     // 3. 2400 x 2400 High Resolution Canvas Setup
     const width = 2400;
     const height = 2400;
