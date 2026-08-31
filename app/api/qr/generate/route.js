@@ -11,7 +11,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "URL zaroori hai" }, { status: 400 });
     }
 
-    // 1. Supabase mein record save karo
+    // 1. Supabase mein record save karo (Serial number 501 se start hoga)
     const { data, error } = await supabase
       .from("qrcodes")
       .insert([{ target_url: targetUrl }])
@@ -21,58 +21,52 @@ export async function POST(req) {
     if (error) throw error;
     const serialNumber = data.serial_number;
 
-    // 2. Safe Base URL Handling (Removes trailing slashes to prevent invalid path errors)
+    // 2. Base URL set karein
     let rawBaseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, ""); // Trim trailing slashes
-    
-    // Dynamic Redirection Link
+    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, ""); // Remove trailing slash
     const redirectUrl = `${cleanBaseUrl}/q/${serialNumber}`;
 
-    // 3. 2400 x 2400 High Resolution Canvas Setup
-    const width = 2400;
-    const height = 2400;
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext("2d");
-
-    // Temp Canvas for QR with High Error Correction
-    const qrCanvas = createCanvas(width, height);
-    await QRCode.toCanvas(qrCanvas, redirectUrl, {
-      width: width,
+    // 3. Generate High-Res 2400x2400 Data URL using QRCode package directly
+    const qrDataUrl = await QRCode.toDataURL(redirectUrl, {
+      width: 2400,
       margin: 2,
       errorCorrectionLevel: "H",
     });
 
-    // Draw QR on main canvas
-    ctx.drawImage(qrCanvas, 0, 0);
+    // 4. Draw Center Box & Serial Number using Canvas
+    const canvas = createCanvas(2400, 2400);
+    const ctx = canvas.getContext("2d");
 
-    // 4. Center Overlay Drawing (White box + Small Serial Number)
+    // QR Code Image Load karke canvas par draw karein
+    const img = new (require("canvas").Image)();
+    img.src = qrDataUrl;
+    ctx.drawImage(img, 0, 0, 2400, 2400);
+
+    // Center Overlay (White Box + Small Serial Number)
     const boxSize = 180;
-    const centerX = (width - boxSize) / 2;
-    const centerY = (height - boxSize) / 2;
+    const centerX = (2400 - boxSize) / 2;
+    const centerY = (2400 - boxSize) / 2;
 
-    // White box in center
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(centerX, centerY, boxSize, boxSize);
 
-    // Border around white box
     ctx.strokeStyle = "#000000";
     ctx.lineWidth = 4;
     ctx.strokeRect(centerX, centerY, boxSize, boxSize);
 
-    // Small Text (Serial Number) in Center
     ctx.fillStyle = "#000000";
     ctx.font = "bold 36px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${serialNumber}`, width / 2, height / 2);
+    ctx.fillText(`${serialNumber}`, 1200, 1200);
 
-    // Convert to Base64 Image String
-    const pngBuffer = canvas.toDataURL("image/png");
+    // Final High-Res Image Data String
+    const finalPngBuffer = canvas.toDataURL("image/png");
 
     return NextResponse.json({
       success: true,
       serialNumber,
-      qrImage: pngBuffer,
+      qrImage: finalPngBuffer,
     });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
