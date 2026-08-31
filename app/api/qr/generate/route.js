@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
-import { Jit, Jimp } from "jimp";
+import { PNG } from "pngjs";
 import { supabase } from "@/lib/supabase";
 
 export async function POST(req) {
@@ -8,7 +8,7 @@ export async function POST(req) {
     const { targetUrl } = await req.json();
 
     if (!targetUrl) {
-      return NextResponse.json({ success: false, error: "URL zaroori hai" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Target URL zaroori hai" }, { status: 400 });
     }
 
     // 1. Supabase mein record insert karein
@@ -21,36 +21,41 @@ export async function POST(req) {
     if (error) throw error;
     const serialNumber = data.serial_number;
 
-    // 2. Base URL clean up
+    // 2. Base URL configuration
     let rawBaseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, "");
     const redirectUrl = `${cleanBaseUrl}/q/${serialNumber}`;
 
-    // 3. Generate QR Code Base64 Buffer (2400x2400 High Res)
-    const qrBuffer = await QRCode.toBuffer(redirectUrl, {
+    // 3. Generate QR Code Buffer (PNG format, 2400x2400)
+    const qrPngBuffer = await QRCode.toBuffer(redirectUrl, {
+      type: "png",
       width: 2400,
       margin: 2,
       errorCorrectionLevel: "H",
     });
 
-    // 4. Load Image using Jimp (Pure JS Engine - Vercel Safe)
-    const image = await Jimp.read(qrBuffer);
+    // 4. Parse PNG using pngjs (Vercel Serverless Safe)
+    const png = PNG.sync.read(qrPngBuffer);
 
-    // Center Box Coordinates (2400x2400 image ke liye)
+    // Center Box Coordinates (180x180 Box for 2400x2400 canvas)
     const boxSize = 180;
-    const startX = (2400 - boxSize) / 2;
-    const startY = (2400 - boxSize) / 2;
+    const startX = Math.floor((2400 - boxSize) / 2);
+    const startY = Math.floor((2400 - boxSize) / 2);
 
     // Draw White Box in Center
-    image.scan(startX, startY, boxSize, boxSize, function (x, y, offset) {
-      this.bitmap.data[offset] = 255;     // Red
-      this.bitmap.data[offset + 1] = 255; // Green
-      this.bitmap.data[offset + 2] = 255; // Blue
-      this.bitmap.data[offset + 3] = 255; // Alpha
-    });
+    for (let y = startY; y < startY + boxSize; y++) {
+      for (let x = startX; x < startX + boxSize; x++) {
+        const idx = (png.width * y + x) << 2;
+        png.data[idx] = 255;     // R
+        png.data[idx + 1] = 255; // G
+        png.data[idx + 2] = 255; // B
+        png.data[idx + 3] = 255; // Alpha
+      }
+    }
 
-    // Convert processed image back to Base64
-    const finalBase64 = await image.getBase64Async(Jimp.MIME_PNG);
+    // 5. Convert PNG back to Base64
+    const buffer = PNG.sync.write(png);
+    const finalBase64 = `data:image/png;base64,${buffer.toString("base64")}`;
 
     return NextResponse.json({
       success: true,
@@ -58,6 +63,7 @@ export async function POST(req) {
       qrImage: finalBase64,
     });
   } catch (err) {
+    console.error("QR Generation Error:", err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
