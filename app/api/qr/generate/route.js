@@ -26,10 +26,16 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "Target URL zaroori hai" }, { status: 400 });
     }
 
+    // Target URL Normalization (Auto-add https:// if protocol missing)
+    let cleanTargetUrl = targetUrl.trim();
+    if (!cleanTargetUrl.startsWith("http://") && !cleanTargetUrl.startsWith("https://")) {
+      cleanTargetUrl = `https://${cleanTargetUrl}`;
+    }
+
     // 1. Supabase Record Insert
     const { data, error } = await supabase
       .from("qrcodes")
-      .insert([{ target_url: targetUrl }])
+      .insert([{ target_url: cleanTargetUrl }])
       .select()
       .single();
 

@@ -149,8 +149,8 @@ export default function Home() {
             <div style={styles.fieldGroup}>
               <label style={styles.label}>Target Destination Web Link</label>
               <input 
-                type="url" 
-                placeholder="https://example.com/destination" 
+                type="text" 
+                placeholder="newlink.com ya https://newlink.com" 
                 value={targetUrl}
                 onChange={(e) => setTargetUrl(e.target.value)}
                 required

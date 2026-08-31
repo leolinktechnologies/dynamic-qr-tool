@@ -9,15 +9,21 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "Serial Number aur New URL dono chahiye" }, { status: 400 });
     }
 
+    // New URL Normalization (Auto-add https:// if protocol missing)
+    let cleanNewUrl = newUrl.trim();
+    if (!cleanNewUrl.startsWith("http://") && !cleanNewUrl.startsWith("https://")) {
+      cleanNewUrl = `https://${cleanNewUrl}`;
+    }
+
     // Database mein serial number search karke link update karo
     const { data, error } = await supabase
       .from("qrcodes")
-      .update({ target_url: newUrl })
-      .eq("serial_number", parseInt(serialNumber))
+      .update({ target_url: cleanNewUrl })
+      .eq("serial_number", parseInt(serialNumber, 10))
       .select();
 
     if (error || !data || data.length === 0) {
-      return NextResponse.json({ success: false, error: "Yeh Serial Number nahi mila!" }, { status: 44 });
+      return NextResponse.json({ success: false, error: "Yeh Serial Number nahi mila!" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, message: `Serial #${serialNumber} ka link update ho gaya!` });
