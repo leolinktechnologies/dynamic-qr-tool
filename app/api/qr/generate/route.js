@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
-import { createCanvas } from "canvas";
+import { Jit, Jimp } from "jimp";
 import { supabase } from "@/lib/supabase";
 
 export async function POST(req) {
@@ -11,7 +11,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "URL zaroori hai" }, { status: 400 });
     }
 
-    // 1. Supabase mein record save karo (Serial number 501 se start hoga)
+    // 1. Supabase mein record insert karein
     const { data, error } = await supabase
       .from("qrcodes")
       .insert([{ target_url: targetUrl }])
@@ -21,52 +21,41 @@ export async function POST(req) {
     if (error) throw error;
     const serialNumber = data.serial_number;
 
-    // 2. Base URL set karein
+    // 2. Base URL clean up
     let rawBaseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, ""); // Remove trailing slash
+    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, "");
     const redirectUrl = `${cleanBaseUrl}/q/${serialNumber}`;
 
-    // 3. Generate High-Res 2400x2400 Data URL using QRCode package directly
-    const qrDataUrl = await QRCode.toDataURL(redirectUrl, {
+    // 3. Generate QR Code Base64 Buffer (2400x2400 High Res)
+    const qrBuffer = await QRCode.toBuffer(redirectUrl, {
       width: 2400,
       margin: 2,
       errorCorrectionLevel: "H",
     });
 
-    // 4. Draw Center Box & Serial Number using Canvas
-    const canvas = createCanvas(2400, 2400);
-    const ctx = canvas.getContext("2d");
+    // 4. Load Image using Jimp (Pure JS Engine - Vercel Safe)
+    const image = await Jimp.read(qrBuffer);
 
-    // QR Code Image Load karke canvas par draw karein
-    const img = new (require("canvas").Image)();
-    img.src = qrDataUrl;
-    ctx.drawImage(img, 0, 0, 2400, 2400);
-
-    // Center Overlay (White Box + Small Serial Number)
+    // Center Box Coordinates (2400x2400 image ke liye)
     const boxSize = 180;
-    const centerX = (2400 - boxSize) / 2;
-    const centerY = (2400 - boxSize) / 2;
+    const startX = (2400 - boxSize) / 2;
+    const startY = (2400 - boxSize) / 2;
 
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(centerX, centerY, boxSize, boxSize);
+    // Draw White Box in Center
+    image.scan(startX, startY, boxSize, boxSize, function (x, y, offset) {
+      this.bitmap.data[offset] = 255;     // Red
+      this.bitmap.data[offset + 1] = 255; // Green
+      this.bitmap.data[offset + 2] = 255; // Blue
+      this.bitmap.data[offset + 3] = 255; // Alpha
+    });
 
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(centerX, centerY, boxSize, boxSize);
-
-    ctx.fillStyle = "#000000";
-    ctx.font = "bold 36px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(`${serialNumber}`, 1200, 1200);
-
-    // Final High-Res Image Data String
-    const finalPngBuffer = canvas.toDataURL("image/png");
+    // Convert processed image back to Base64
+    const finalBase64 = await image.getBase64Async(Jimp.MIME_PNG);
 
     return NextResponse.json({
       success: true,
       serialNumber,
-      qrImage: finalPngBuffer,
+      qrImage: finalBase64,
     });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
